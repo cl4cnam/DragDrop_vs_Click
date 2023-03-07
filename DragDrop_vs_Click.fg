@@ -1,0 +1,83 @@
+.var sugPointermove
+.var sugPointerup
+.var sugEscape
+
+{deffunc setStatus (p_str)
+	{js (p_str) `document.getElementById('status').textContent = p_str`}
+}
+
+.var myObject <-- {js () `return document.getElementById('myObject')`}
+
+.setStatus 'Ready'
+
+{par
+	#=================
+	# Translate events
+	#=================
+	
+	{whileTrueAwaitDom_js $myObject 'pointermove' `goAssign('sugPointermove', 'pointermove')`}
+	{whileTrueAwaitDom_js $myObject 'pointerup' `goAssign('sugPointerup', 'pointerup')`}
+	{whileTrueAwaitDom_js $document 'keydown' `
+		if (evt.key === 'Escape') goAssign('sugEscape', evt)
+	`}
+	
+	#==========
+	# Main loop
+	#==========
+	
+	{whileTrue
+		#--------------------------
+		# await 'pointerdown' event
+		#--------------------------
+		
+		.var evtPointerdown <-- :awaitDomeventBeep 'pointerdown' '#myObject'
+		{js (myObject evtPointerdown) `
+			myObject.setPointerCapture(evtPointerdown.pointerId)
+			myObject.data_origX = evtPointerdown.clientX
+			myObject.data_origY = evtPointerdown.clientY
+			myObject.bounding = myObject.getBoundingClientRect()
+		`}
+		
+		{par_race
+			# Manage movement
+			# - - - - - - - -
+			{whileTrueAwaitDom_js $myObject 'pointermove' "
+				const deltaX = evt.clientX - p_target.data_origX
+				const deltaY = evt.clientY - p_target.data_origY
+				p_target.style.left = `${p_target.bounding.left + deltaX}px`
+				p_target.style.top = `${p_target.bounding.top + deltaY}px`
+			"}
+			
+			# Manage following events
+			# - - - - - - - - - - - - -
+			{seq
+				.var evtB <-- {par_race
+					:await sugPointermove bip
+					:await sugPointerup bip
+				}
+				{if [ $evtB = 'pointerup' ]
+					# if 'pointerup' is first
+					.setStatus 'Clicked!'
+				else
+					# if 'pointermove' is first
+					.setStatus 'dragging...'
+					.var evtC <-- {par_race
+						:await sugPointerup bip
+						:await sugEscape bip
+					}
+					{if [ $evtC = 'pointerup' ]
+						# if 'pointerup' is first
+						.setStatus 'Dropped!'
+					else
+						# if 'escape' is first
+						{js (myObject) "
+							myObject.style.left = `${myObject.bounding.left}px`;
+							myObject.style.top = `${myObject.bounding.top}px`;
+						"}
+						.setStatus 'Cancelled!'
+					}
+				}
+			}
+		}
+	}
+}
